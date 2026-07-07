@@ -216,3 +216,25 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project Specific
+data/sample_videos/*
+!data/sample_videos/.gitkeep
+data/snapshots/*
+!data/snapshots/.gitkeep
+models/*
+!models/.gitkeep
+
+# SQLite database
+data/*.db
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
