@@ -20,7 +20,10 @@ app.mount("/snapshots", StaticFiles(directory=snapshots_dir), name="snapshots")
 def startup_event():
     videos = list_videos()
     if videos:
-        processor.video_source = os.path.join(VIDEOS_DIR, videos[0])
+        # Prefer videos that better demonstrate perimeter intrusion / people movement
+        preferred = ["pedestrians.mp4", "worker.mp4", "walking.mp4", "demo.mp4"]
+        chosen = next((v for v in preferred if v in videos), videos[0])
+        processor.video_source = os.path.join(VIDEOS_DIR, chosen)
     processor.start()
 
 

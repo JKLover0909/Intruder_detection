@@ -383,11 +383,28 @@ class VideoProcessor:
 
 
 def list_videos():
-    vids = []
-    for f in sorted(os.listdir(VIDEOS_DIR)):
+    """Return videos with better perimeter/intrusion demo videos first."""
+    all_vids = []
+    for f in os.listdir(VIDEOS_DIR):
         if f.lower().endswith((".mp4", ".avi", ".mkv", ".mov")):
-            vids.append(f)
-    return vids
+            all_vids.append(f)
+
+    # Recommended order for realistic intruder / perimeter detection demos
+    priority = ["pedestrians.mp4", "worker.mp4", "walking.mp4", "demo.mp4", "face_detection.mp4"]
+
+    ordered = []
+    seen = set()
+    for name in priority:
+        if name in all_vids:
+            ordered.append(name)
+            seen.add(name)
+
+    # Add any other videos not in priority
+    for v in sorted(all_vids):
+        if v not in seen:
+            ordered.append(v)
+
+    return ordered
 
 
 processor = VideoProcessor()

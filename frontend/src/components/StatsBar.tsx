@@ -1,65 +1,96 @@
-import { AlertTriangle, Shield, Clock, TrendingUp } from 'lucide-react'
-import type { SecurityEvent } from '../types'
+import { AlertTriangle, Shield, TrendingUp, Clock, ArrowRight } from 'lucide-react'
+import type { SecurityEvent, Stats } from '../types'
 
 interface Props {
   events: SecurityEvent[]
-  totalAlertsToday: number
+  stats: Stats
 }
 
-export default function StatsBar({ events, totalAlertsToday }: Props) {
-  const high = events.filter(e => e.severity === 'High').length
-  const climbing = events.filter(e => e.event_type === 'Climbing').length
-  const loitering = events.filter(e => e.event_type === 'Loitering').length
+export default function StatsBar({ events, stats }: Props) {
+  // Prefer backend counts, fallback to derived
+  const total = stats.total_alerts_today ?? events.length
+  const high = events.filter(e => e.severity === 'High' || e.severity === 'Critical').length
+  const critical = events.filter(e => e.severity === 'Critical').length
+
+  const intrusion = stats.intrusions ?? events.filter(e => e.event_type === 'Intrusion').length
+  const climbing = stats.climbing_suspects ?? events.filter(e => e.event_type === 'Climbing').length
+  const crossing = stats.line_crossings ?? events.filter(e => e.event_type === 'Line Crossing').length
+  const loitering = stats.loitering_events ?? events.filter(e => e.event_type === 'Loitering').length
 
   return (
-    <div className="grid grid-cols-4 gap-3 px-4 py-3 border-b border-slate-700/50 bg-soc-800/40">
-      <StatCard
-        icon={<AlertTriangle className="w-4 h-4 text-red-400" />}
-        label="Total Alerts Today"
-        value={totalAlertsToday}
-        accent="red"
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 px-4 py-2.5 border-b border-soc-700/60 bg-soc-900">
+      <MetricCard 
+        label="TOTAL ALERTS" 
+        value={total} 
+        sub="Today" 
+        accent="slate"
+        icon={<AlertTriangle className="w-3.5 h-3.5" />} 
       />
-      <StatCard
-        icon={<Shield className="w-4 h-4 text-orange-400" />}
-        label="High Severity"
-        value={high}
-        accent="orange"
+      <MetricCard 
+        label="CRITICAL / HIGH" 
+        value={critical > 0 ? `${critical} / ${high}` : high} 
+        sub="Immediate attention" 
+        accent="critical"
+        icon={<Shield className="w-3.5 h-3.5" />} 
       />
-      <StatCard
-        icon={<TrendingUp className="w-4 h-4 text-pink-400" />}
-        label="Climbing Suspects"
-        value={climbing}
-        accent="pink"
+      <MetricCard 
+        label="INTRUSION" 
+        value={intrusion} 
+        sub="Zone violation" 
+        accent="intrusion"
+        icon={<ArrowRight className="w-3.5 h-3.5" />} 
       />
-      <StatCard
-        icon={<Clock className="w-4 h-4 text-yellow-400" />}
-        label="Loitering Events"
-        value={loitering}
-        accent="yellow"
+      <MetricCard 
+        label="CLIMBING" 
+        value={climbing} 
+        sub="Fence / Perimeter" 
+        accent="climbing"
+        icon={<TrendingUp className="w-3.5 h-3.5" />} 
+      />
+      <MetricCard 
+        label="LINE CROSSING" 
+        value={crossing} 
+        sub="Virtual boundary" 
+        accent="crossing"
+        icon={<ArrowRight className="w-3.5 h-3.5" />} 
+      />
+      <MetricCard 
+        label="LOITERING" 
+        value={loitering} 
+        sub="> 8s dwell" 
+        accent="loiter"
+        icon={<Clock className="w-3.5 h-3.5" />} 
       />
     </div>
   )
 }
 
-function StatCard({ icon, label, value, accent }: {
-  icon: React.ReactNode
-  label: string
-  value: number
-  accent: string
+function MetricCard({ label, value, sub, accent, icon }: { 
+  label: string; 
+  value: number | string; 
+  sub: string; 
+  accent: string; 
+  icon: React.ReactNode 
 }) {
-  const accents: Record<string, string> = {
-    red:    'border-red-500/30 bg-red-500/5',
-    orange: 'border-orange-500/30 bg-orange-500/5',
-    pink:   'border-pink-500/30 bg-pink-500/5',
-    yellow: 'border-yellow-500/30 bg-yellow-500/5',
+  const accentStyles: Record<string, string> = {
+    slate: 'border-soc-600 bg-soc-800/60 text-slate-400',
+    critical: 'border-red-500/40 bg-red-500/5 text-red-400',
+    intrusion: 'border-red-600/40 bg-red-950/40 text-red-400',
+    climbing: 'border-fuchsia-500/40 bg-fuchsia-950/40 text-fuchsia-400',
+    crossing: 'border-purple-500/40 bg-purple-950/40 text-purple-400',
+    loiter: 'border-amber-500/40 bg-amber-950/40 text-amber-400',
   }
+
   return (
-    <div className={`rounded-lg border px-4 py-3 ${accents[accent]}`}>
-      <div className="flex items-center gap-2 mb-1">
+    <div className={`rounded-md border px-3 py-2 flex flex-col justify-between transition-colors ${accentStyles[accent] || accentStyles.slate}`}>
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-medium tracking-[0.5px] text-slate-400">{label}</span>
         {icon}
-        <span className="text-xs text-slate-500 truncate">{label}</span>
       </div>
-      <p className="text-2xl font-bold text-slate-100">{value}</p>
+      <div className="mt-0.5">
+        <div className="text-xl font-semibold tabular-nums text-slate-100 leading-none">{value}</div>
+        <div className="text-[10px] text-slate-500 mt-px">{sub}</div>
+      </div>
     </div>
   )
 }

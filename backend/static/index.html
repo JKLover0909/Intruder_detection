@@ -195,9 +195,14 @@
             <div className="flex items-center gap-3">
               {videos.length > 0 && (
                 <select onChange={e => handleSwitch(e.target.value)}
-                  className="text-[10px] bg-soc-700 border border-slate-600/40 rounded px-2 py-0.5 text-slate-300 outline-none">
-                  {videos.map(v => <option key={v} value={v}>{v}</option>)}
+                  className="text-[10px] bg-soc-700 border border-slate-600/40 rounded px-2 py-0.5 text-slate-300 outline-none"
+                  title="Chọn video phù hợp để demo xâm nhập chu vi (pedestrians / worker recommended)">
+                  {videos.map(v => {
+                    const isRec = v === 'pedestrians.mp4' || v === 'worker.mp4';
+                    return <option key={v} value={v}>{isRec ? '★ ' : ''}{v}{isRec ? ' (Recommended)' : ''}</option>;
+                  })}
                 </select>
+                <span className="text-[9px] text-red-400/70 ml-1">(pedestrians/worker tốt nhất cho demo xâm nhập)</span>
               )}
               <span className="flex items-center gap-1 text-[10px] text-red-400 font-bold">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-500 pulse-dot" /> REC
