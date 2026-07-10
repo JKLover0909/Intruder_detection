@@ -25,6 +25,8 @@ export interface Stats {
   line_crossings: number
   system_status: string
   roi_active: boolean
+  fps?: number
+  fps_by_camera?: Record<string, number>
 }
 
 export interface CameraStatus {

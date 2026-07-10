@@ -1,37 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --soc-bg: #05070f;
+  --soc-bg: #020617;
+  --soc-surface: #0a1224;
+  --soc-panel: #111827;
+  --soc-border: #1e293b;
+  --soc-accent: #22c55e;
+  --soc-danger: #ef4444;
+  --soc-fg: #f8fafc;
+  --soc-muted: #94a3b8;
 }
 
 body {
-  background-color: #05070f;
-  color: #e2e8f0;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--soc-bg);
+  color: var(--soc-fg);
+  font-family: 'Fira Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Refined scrollbar */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: #0f1629; }
-::-webkit-scrollbar-thumb { background: #36415f; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #4b5a7a; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--soc-surface); }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
 
-/* Stronger video feed presentation */
 img.video-feed {
   display: block;
-  background: #05070f;
-  image-rendering: crisp-edges;
+  background: #020617;
 }
 
-/* Professional table rows */
-table tr:hover {
-  background-color: rgba(28, 40, 71, 0.5);
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-/* Better focus states */
-button:focus-visible, input:focus-visible {
-  outline: 1px solid #64748b;
-  outline-offset: 1px;
+/* Visible focus — WCAG / ui-ux-pro-max checklist */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+[role='button']:focus-visible {
+  outline: 2px solid #22c55e;
+  outline-offset: 2px;
+}
+
+/* Clickable affordance */
+button,
+[role='button'] {
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@layer utilities {
+  .label-caps {
+    @apply text-[10px] font-medium uppercase tracking-[0.08em] text-slate-400;
+  }
+  .panel-surface {
+    @apply bg-soc-800/90 border border-soc-700/80;
+  }
 }

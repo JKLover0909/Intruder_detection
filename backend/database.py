@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 import datetime
 import os
@@ -18,12 +18,25 @@ class Event(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
-    event_type = Column(String, index=True) # "Intrusion", "Line Crossing", "Climbing"
-    severity = Column(String)               # "High", "Medium", "Low"
+    event_type = Column(String, index=True)  # Intrusion | Line Crossing | Climbing | Loitering
+    severity = Column(String)                # Critical | High | Medium | Low
     message = Column(String)
     snapshot_path = Column(String)
+    camera = Column(String, nullable=True)   # CAM-01 · ... — để UI highlight đúng camera
 
 Base.metadata.create_all(bind=engine)
+
+
+def _ensure_camera_column():
+    """SQLite: thêm cột camera nếu DB cũ chưa có."""
+    with engine.connect() as conn:
+        cols = {row[1] for row in conn.execute(text("PRAGMA table_info(events)")).fetchall()}
+        if "camera" not in cols:
+            conn.execute(text("ALTER TABLE events ADD COLUMN camera VARCHAR"))
+            conn.commit()
+
+
+_ensure_camera_column()
 
 def get_db():
     db = SessionLocal()

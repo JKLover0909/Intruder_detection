@@ -1,6 +1,6 @@
 # Factory Perimeter Security AI
 
-AI-powered video analytics for factory perimeter intrusion detection. Detects unauthorized intrusions, fence climbing, loitering, and boundary crossing in real-time using YOLOv8 + ByteTrack.
+AI-powered video analytics for factory perimeter intrusion detection. Detects unauthorized intrusions, fence climbing, loitering, and boundary crossing in real-time using YOLOv8s + ByteTrack + pose heuristics.
 
 ## Quick Start
 
@@ -18,9 +18,7 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 # 2. Install dependencies
 pip install -r backend/requirements.txt
 
-# 3. Add sample video (optional — falls back to webcam 0)
-# Copy any CCTV .mp4 file to:
-#   data/sample_videos/demo.mp4
+# 3. Add sample videos to data/sample_videos/ (optional)
 
 # 4. Start backend
 cd backend
@@ -44,65 +42,113 @@ npm run dev
 
 | Feature | Status |
 |---|---|
-| Person detection (YOLOv8n) | ✅ |
+| Person detection (YOLOv8s) | ✅ |
 | ByteTrack multi-person tracking | ✅ |
-| ROI intrusion detection | ✅ |
-| MJPEG live stream | ✅ |
+| ROI / zone intrusion detection | ✅ |
+| Virtual line crossing | ✅ |
+| Loitering detection (>8s dwell) | ✅ |
+| Pose-based climbing detection | ✅ |
+| MJPEG live stream with HUD | ✅ |
 | Event log (SQLite) | ✅ |
 | Snapshot evidence saving | ✅ |
 | SOC Dashboard (React) | ✅ |
+| Overlay toggles (ROI / fence / boxes / labels) | ✅ |
+| Real FPS reporting | ✅ |
 | Alert panel with severity badges | ✅ |
-| Line crossing detection | 🔜 |
-| Loitering detection | 🔜 |
-| Pose-based climbing detection | 🔜 |
 
 ## Architecture
 
 ```
 Video File / Webcam
   → OpenCV Frame Reader
-  → YOLOv8n + ByteTrack     (backend/engine.py)
-  → Rule Engine              (ROI check, cooldown)
+  → YOLOv8s + ByteTrack     (backend/engine.py)
+  → YOLOv8n-pose (every 3rd frame)
+  → Rule Engine              (zone / line / loiter / climb + 5s cooldown)
   → SQLite Event Store       (data/events.db)
   → Snapshot Saver           (data/snapshots/)
   → FastAPI MJPEG Stream     (localhost:8000/video_feed)
-  → React Dashboard          (localhost:5173)
+  → React Dashboard          (localhost:5173, Vite proxy)
 ```
 
 ## Configuration
 
-Edit `backend/engine.py` to change ROI polygon coordinates:
+Edit zone / line definitions in `backend/engine.py`. Coordinates are **normalized [0–1]** and scaled at runtime to the fixed frame size **960×540**:
 
 ```python
-ROI_POLYGON = np.array([[200, 200], [600, 200], [700, 500], [100, 500]])
+ZONES = {
+    "Zone-A Restricted": {
+        "polygon_norm": [[0.55, 0.15], [0.95, 0.15], [0.95, 0.85], [0.55, 0.85]],
+        "type": "restricted",
+        ...
+    },
+    "Fence Line": {
+        "polygon_norm": [[0.48, 0.10], [0.52, 0.10], [0.52, 0.90], [0.48, 0.90]],
+        "type": "fence",
+        ...
+    },
+}
+
+VIRTUAL_LINE_NORM = {"p1": [0.50, 0.05], "p2": [0.50, 0.95]}
 ```
 
-Coordinates are `[x, y]` pixel positions relative to the **resized 800×600 frame**.
+Detection thresholds (same file):
+
+| Constant | Default | Meaning |
+|---|---|---|
+| `LOITER_THRESHOLD_SEC` | 8.0 | Seconds in a zone before Loitering alert |
+| `ALERT_COOLDOWN_SEC` | 5.0 | Min seconds between same track+event alerts |
+| Detection `conf` | 0.35 | YOLO person confidence |
+| Pose interval | every 3 frames | Climbing keypoint inference |
+
+### Severity mapping
+
+| Event | Severity |
+|---|---|
+| Climbing | Critical |
+| Intrusion | High |
+| Line Crossing (inbound) | High |
+| Line Crossing (outbound) | Medium |
+| Loitering | Medium |
+
+## API
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/video_feed` | MJPEG stream |
+| GET | `/api/events?limit=` | Recent events |
+| GET | `/api/stats` | Counts + `fps` |
+| GET/POST | `/api/overlays` | Read / set ROI, fence, boxes, labels |
+| GET | `/api/videos` | List sample videos |
+| POST | `/api/videos/switch?filename=` | Switch video source |
+| POST | `/api/events/clear` | Clear event log |
+| GET | `/snapshots/*` | Evidence images |
 
 ## Project Structure
 
 ```
-factory-intrusion-demo/
+Intruder_detection/
 ├── backend/
-│   ├── main.py          # FastAPI server + MJPEG stream
-│   ├── engine.py        # YOLO inference + rule engine
-│   ├── database.py      # SQLite models
-│   └── requirements.txt
+│   ├── main.py          # FastAPI server + MJPEG stream + overlay API
+│   ├── engine.py        # YOLO inference + rule engine + FPS
+│   ├── database.py      # SQLite Event model
+│   ├── requirements.txt
+│   └── static/          # Legacy single-page UI (served at /)
 ├── frontend/
 │   └── src/
-│       ├── App.tsx               # Main layout
+│       ├── App.tsx
 │       ├── components/
-│       │   ├── Header.tsx        # Top bar + status
-│       │   ├── VideoPanel.tsx    # Camera feed
-│       │   ├── AlertPanel.tsx    # Real-time alerts
-│       │   ├── StatsBar.tsx      # KPI cards
-│       │   ├── EventTable.tsx    # Full event log
-│       │   └── SnapshotModal.tsx # Evidence viewer
+│       │   ├── Header.tsx
+│       │   ├── VideoPanel.tsx    # Live feed, overlays, fullscreen
+│       │   ├── AlertPanel.tsx
+│       │   ├── StatsBar.tsx
+│       │   ├── EventTable.tsx
+│       │   └── SnapshotModal.tsx
 │       └── hooks/
-│           └── useSecurityData.ts # Data fetching + mock
+│           └── useSecurityData.ts
 ├── data/
-│   ├── sample_videos/   # Put demo.mp4 here
+│   ├── sample_videos/   # Put .mp4 demos here
 │   ├── snapshots/       # Auto-saved alert images
 │   └── events.db        # SQLite (auto-created)
-└── models/              # YOLO weights (auto-downloaded)
+├── models/              # YOLO weights (yolov8s.pt, yolov8n-pose.pt)
+└── AGENT.md             # Agent notes / user requirements
 ```

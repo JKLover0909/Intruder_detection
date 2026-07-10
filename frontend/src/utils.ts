@@ -1,5 +1,11 @@
 import type { Severity, EventType, AlertStatus } from './types'
 
+export function formatCompactNumber(n: number): string {
+  if (n >= 10000) return `${(n / 1000).toFixed(1)}k`
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
+  return String(n)
+}
+
 export function severityBadge(severity: Severity) {
   switch (severity) {
     case 'Critical': return 'bg-red-600/30 text-red-300 border border-red-500/60 font-semibold'
@@ -11,13 +17,14 @@ export function severityBadge(severity: Severity) {
   }
 }
 
-export function severityColor(severity: Severity): string {
+export function severityLabel(severity: Severity): string {
   switch (severity) {
-    case 'Critical': return '#ef4444'
-    case 'High':     return '#f97316'
-    case 'Medium':   return '#eab308'
-    case 'Low':      return '#22c55e'
-    default:         return '#64748b'
+    case 'Critical': return 'Nghiêm trọng'
+    case 'High':     return 'Cao'
+    case 'Medium':   return 'Trung bình'
+    case 'Low':      return 'Thấp'
+    case 'Info':     return 'Thông tin'
+    default:         return severity
   }
 }
 
@@ -26,29 +33,31 @@ export function eventTypeBadge(type: EventType) {
     case 'Intrusion':    return 'bg-red-900/50 text-red-300 border border-red-700/40'
     case 'Line Crossing':return 'bg-purple-900/50 text-purple-300 border border-purple-700/40'
     case 'Loitering':    return 'bg-amber-900/50 text-amber-300 border border-amber-700/40'
-    case 'Climbing':     return 'bg-fuchsia-900/50 text-fuchsia-300 border border-fuchsia-700/40'
+    case 'Climbing':     return 'bg-amber-900/40 text-amber-300 border border-amber-700/40'
     case 'After Hours':  return 'bg-sky-900/50 text-sky-300 border border-sky-700/40'
   }
 }
 
-export function eventTypeColor(type: EventType): string {
+export function eventTypeLabel(type: EventType | 'All'): string {
   switch (type) {
-    case 'Intrusion':    return '#dc2626'
-    case 'Line Crossing':return '#a855f7'
-    case 'Loitering':    return '#f59e0b'
-    case 'Climbing':     return '#c026ff'
-    case 'After Hours':  return '#0ea5e9'
-    default:             return '#64748b'
+    case 'All':            return 'Tất cả'
+    case 'Intrusion':      return 'Xâm nhập'
+    case 'Line Crossing':  return 'Vượt đường'
+    case 'Loitering':      return 'Đi lảng vẫn'
+    case 'Climbing':       return 'Leo rào'
+    case 'After Hours':    return 'Ngoài giờ'
+    default:               return type
   }
 }
 
+/** Prefer Lucide icons in UI — kept for legacy callers */
 export function eventTypeIcon(type: EventType): string {
   switch (type) {
-    case 'Intrusion':    return '🚨'
-    case 'Line Crossing':return '⛔'
-    case 'Loitering':    return '🕵️'
-    case 'Climbing':     return '🧗'
-    case 'After Hours':  return '🌙'
+    case 'Intrusion':    return '!'
+    case 'Line Crossing':return '>'
+    case 'Loitering':    return '~'
+    case 'Climbing':     return '^'
+    case 'After Hours':  return '*'
   }
 }
 
@@ -62,12 +71,19 @@ export function statusBadge(status: AlertStatus) {
   }
 }
 
-export function getAlertStatus(event: { status?: AlertStatus }): AlertStatus {
-  return event.status || 'New'
+export function statusLabel(status: AlertStatus): string {
+  switch (status) {
+    case 'New':            return 'Mới'
+    case 'Reviewing':      return 'Đang xem'
+    case 'Acknowledged':   return 'Đã xem'
+    case 'Resolved':       return 'Đã xử lý'
+    case 'False Positive': return 'Báo nhầm'
+    default:               return status
+  }
 }
 
-export function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+export function getAlertStatus(event: { status?: AlertStatus }): AlertStatus {
+  return event.status || 'New'
 }
 
 export function formatDateTime(iso: string): string {
@@ -76,7 +92,21 @@ export function formatDateTime(iso: string): string {
 
 export function timeAgo(iso: string): string {
   const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
-  if (seconds < 60) return `${seconds}s ago`
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-  return `${Math.floor(seconds / 3600)}h ago`
+  if (seconds < 60) return `${seconds} giây trước`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} phút trước`
+  return `${Math.floor(seconds / 3600)} giờ trước`
+}
+
+/** Dịch message cũ từ DB (tiếng Anh) sang tiếng Việt khi hiển thị */
+export function formatEventMessage(message: string): string {
+  return message
+    .replace(/Person #(\d+) entered (.+)/, 'Người #$1 xâm nhập $2')
+    .replace(/Person #(\d+) entered perimeter/, 'Người #$1 đi vào chu vi')
+    .replace(/Person #(\d+) exited perimeter/, 'Người #$1 đi ra khỏi chu vi')
+    .replace(/Person #(\d+) loitering in (.+) for (\d+)s/, 'Người #$1 đi lảng vẫn tại $2 ($3s)')
+    .replace(/Person #(\d+) possible climbing near fence/, 'Người #$1 nghi leo hàng rào')
+    .replace(/Person #(\d+) rapid upward movement near fence/, 'Người #$1 chuyển động lên nhanh gần hàng rào')
+    .replace(/Vùng cấm A/g, 'Vùng cấm')
+    .replace(/Zone-A Restricted/g, 'Vùng cấm')
+    .replace(/Fence Line/g, 'Đường hàng rào')
 }
