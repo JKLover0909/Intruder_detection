@@ -316,6 +316,59 @@ function CameraTile({
 }) {
   const badge = focusLabel(cam.focus)
   const fpsLabel = fps && fps > 0 ? fps.toFixed(0) : '—'
+  // Lưới 4-cam: poll JPEG ngắn (tránh treo vì giới hạn ~6 kết nối MJPEG/browser).
+  // Phóng to 1 cam: dùng MJPEG mượt hơn.
+  const [pollSrc, setPollSrc] = useState('')
+  const pollFail = useRef(0)
+  const onErrorRef = useRef(onError)
+  onErrorRef.current = onError
+
+  useEffect(() => {
+    if (!backendAvailable || isFocused || hasError) {
+      setPollSrc(prev => {
+        if (prev) URL.revokeObjectURL(prev)
+        return ''
+      })
+      return
+    }
+    let alive = true
+    let timer: number | undefined
+    pollFail.current = 0
+
+    const tick = async () => {
+      if (!alive) return
+      try {
+        const res = await fetch(`/api/frame/${cam.id}?t=${Date.now()}`, { cache: 'no-store' })
+        if (!res.ok) throw new Error(String(res.status))
+        const blob = await res.blob()
+        if (!alive) return
+        const url = URL.createObjectURL(blob)
+        setPollSrc(prev => {
+          if (prev) URL.revokeObjectURL(prev)
+          return url
+        })
+        pollFail.current = 0
+      } catch {
+        pollFail.current += 1
+        if (pollFail.current >= 12) onErrorRef.current()
+      } finally {
+        if (alive) timer = window.setTimeout(tick, 120)
+      }
+    }
+    tick()
+    return () => {
+      alive = false
+      if (timer) window.clearTimeout(timer)
+      setPollSrc(prev => {
+        if (prev) URL.revokeObjectURL(prev)
+        return ''
+      })
+    }
+  }, [backendAvailable, isFocused, hasError, cam.id, streamKey])
+
+  const imgSrc = isFocused
+    ? `/video_feed/${cam.id}?ts=${streamKey}`
+    : pollSrc
 
   return (
     <button
@@ -360,12 +413,12 @@ function CameraTile({
       )}
 
       <div className="flex-1 flex items-center justify-center min-h-0 w-full">
-        {backendAvailable && !hasError ? (
+        {backendAvailable && !hasError && imgSrc ? (
           <img
-            src={`/video_feed/${cam.id}?ts=${streamKey}`}
+            src={imgSrc}
             alt={cam.camera_label || cam.id}
             className="video-feed w-full h-full object-contain pointer-events-none"
-            onError={onError}
+            onError={() => { if (isFocused) onError() }}
             draggable={false}
           />
         ) : backendAvailable && hasError ? (
@@ -375,8 +428,8 @@ function CameraTile({
           </div>
         ) : (
           <div className="text-center text-slate-500 px-2">
-            <AlertCircle className="mx-auto w-5 h-5 mb-1" />
-            <p className="text-[10px]">Hệ thống tạm ngắt kết nối</p>
+            <AlertCircle className="mx-auto w-5 h-5 mb-1 opacity-40" />
+            <p className="text-[10px]">{backendAvailable ? 'Đang tải…' : 'Hệ thống tạm ngắt kết nối'}</p>
           </div>
         )}
       </div>

@@ -1,7 +1,7 @@
 import cv2
 import time
 from fastapi import FastAPI, Depends
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -130,6 +130,23 @@ def video_feed_demo(demo_id: str):
     return StreamingResponse(
         generate_frames(proc),
         media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
+
+
+@app.get("/api/frame/{demo_id}")
+def api_frame(demo_id: str):
+    """Một JPEG mới nhất — dùng cho lưới 4-cam (tránh nghẽn kết nối MJPEG trình duyệt)."""
+    proc = get_processor(demo_id)
+    if proc is None:
+        return {"error": "Unknown demo", "demo_id": demo_id}
+    # last_version=-1 → trả ngay frame hiện có (không chờ frame mới)
+    jpeg, _ = proc.get_jpeg(last_version=-1, timeout=0.35)
+    if jpeg is None:
+        return Response(status_code=503, content=b"no frame yet")
+    return Response(
+        content=jpeg,
+        media_type="image/jpeg",
         headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
     )
 
