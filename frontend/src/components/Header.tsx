@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Shield, Camera, Activity, Zap } from 'lucide-react'
+import { Camera, Activity, Zap } from 'lucide-react'
 import type { Stats } from '../types'
 
 interface Props {
@@ -21,12 +21,17 @@ export default function Header({ stats, backendAvailable, criticalCount = 0, act
   return (
     <header className="flex items-center justify-between gap-3 px-4 sm:px-5 py-2.5 border-b border-soc-700/80 bg-soc-900/95 backdrop-blur-md z-10">
       <div className="flex items-center gap-2.5 min-w-0">
-        <div className="p-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/25 shrink-0">
-          <Shield className="w-4 h-4 text-emerald-400" />
-        </div>
+        <img
+          src="/logo.svg"
+          alt=""
+          width={32}
+          height={32}
+          className="w-8 h-8 rounded-lg shrink-0 shadow-sm shadow-emerald-500/10"
+          draggable={false}
+        />
         <div className="min-w-0">
           <h1 className="text-sm font-semibold tracking-wide text-slate-50 truncate">
-            Giám sát chu vi nhà máy
+            Giám sát xâm nhập
           </h1>
           <p className="text-[10px] text-slate-500 hidden sm:block">Trung tâm điều hành · thời gian thực</p>
         </div>
