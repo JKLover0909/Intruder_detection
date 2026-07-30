@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import cv2
 import time
 from fastapi import FastAPI, Depends
@@ -21,6 +23,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 app = FastAPI(title="Factory Perimeter Security AI")
 
 snapshots_dir = os.path.join(BASE_DIR, "data", "snapshots")
+os.makedirs(snapshots_dir, exist_ok=True)
 app.mount("/snapshots", StaticFiles(directory=snapshots_dir), name="snapshots")
 
 # Cache stats — tránh 5 COUNT query mỗi lần frontend poll

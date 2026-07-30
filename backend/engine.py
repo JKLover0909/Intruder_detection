@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -12,6 +14,11 @@ from demos import (
     DEFAULT_DEMO_ID, get_demo, list_demo_summaries, VIDEOS_DIR,
 )
 
+try:
+    import torch
+except ImportError:  # pragma: no cover
+    torch = None
+
 # Re-export for main.py / callers
 __all__ = ["processor", "list_videos", "VIDEOS_DIR"]
 
@@ -19,26 +26,78 @@ BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 SNAPSHOTS_DIR = os.path.join(BASE_DIR, "data", "snapshots")
 
-FRAME_W, FRAME_H = 960, 540
 
-detect_model = YOLO(os.path.join(MODELS_DIR, "yolov8s.pt"))
-pose_model = YOLO(os.path.join(MODELS_DIR, "yolov8n-pose.pt"))
+def _is_jetson() -> bool:
+    flag = os.environ.get("JETSON", "").strip().lower()
+    if flag in ("1", "true", "yes", "on"):
+        return True
+    if flag in ("0", "false", "no", "off"):
+        return False
+    return os.path.exists("/etc/nv_tegra_release")
+
+
+IS_JETSON = _is_jetson()
+DEVICE = 0 if (torch is not None and torch.cuda.is_available()) else "cpu"
+USE_HALF = DEVICE != "cpu"
+# Jetson: yolov8n nhẹ hơn s (~3×) để chạy 4 pipeline song song
+_DETECT_NAME = os.environ.get(
+    "INTRUDER_DETECT_WEIGHTS",
+    "yolov8n.pt" if IS_JETSON else "yolov8s.pt",
+)
+_POSE_NAME = os.environ.get("INTRUDER_POSE_WEIGHTS", "yolov8n-pose.pt")
+FRAME_W, FRAME_H = (
+    (int(os.environ.get("INTRUDER_FRAME_W", "640")), int(os.environ.get("INTRUDER_FRAME_H", "360")))
+    if IS_JETSON
+    else (960, 540)
+)
+IMGSZ = int(os.environ.get("INTRUDER_IMGSZ", "416" if IS_JETSON else "640"))
+MAX_DET = int(os.environ.get("INTRUDER_MAX_DET", "15" if IS_JETSON else "50"))
+JPEG_QUALITY = int(os.environ.get("INTRUDER_JPEG_QUALITY", "60" if IS_JETSON else "75"))
+
+# Legacy aliases (một số script cũ import tên này)
+detect_model = None
+pose_model = None
 
 # Mỗi demo trong lưới 4-cam cần YOLO riêng — .track() không thread-safe khi share 1 model
 _detect_models: dict[str, YOLO] = {}
 _pose_models: dict[str, YOLO] = {}
+_model_lock = threading.Lock()
+_clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+
+
+def _prepare_model(model: YOLO) -> YOLO:
+    if DEVICE != "cpu":
+        model.to(DEVICE)
+    return model
 
 
 def _get_detect_model(demo_id: str) -> YOLO:
-    if demo_id not in _detect_models:
-        _detect_models[demo_id] = YOLO(os.path.join(MODELS_DIR, "yolov8s.pt"))
-    return _detect_models[demo_id]
+    with _model_lock:
+        if demo_id not in _detect_models:
+            path = os.path.join(MODELS_DIR, _DETECT_NAME)
+            if not os.path.isfile(path):
+                path = os.path.join(MODELS_DIR, "yolov8s.pt")
+            _detect_models[demo_id] = _prepare_model(YOLO(path))
+        return _detect_models[demo_id]
 
 
 def _get_pose_model(demo_id: str) -> YOLO:
-    if demo_id not in _pose_models:
-        _pose_models[demo_id] = YOLO(os.path.join(MODELS_DIR, "yolov8n-pose.pt"))
-    return _pose_models[demo_id]
+    with _model_lock:
+        if demo_id not in _pose_models:
+            _pose_models[demo_id] = _prepare_model(
+                YOLO(os.path.join(MODELS_DIR, _POSE_NAME))
+            )
+        return _pose_models[demo_id]
+
+
+def _yolo_kwargs(**extra):
+    """Common Ultralytics args tuned for Jetson / desktop."""
+    kw = {"verbose": False, "imgsz": IMGSZ, "max_det": MAX_DET}
+    if DEVICE != "cpu":
+        kw["device"] = DEVICE
+        kw["half"] = USE_HALF
+    kw.update(extra)
+    return kw
 
 LOITER_THRESHOLD_SEC = 8.0
 CLIMBING_WRIST_ABOVE_NOSE = True
@@ -90,8 +149,8 @@ def _enhance_low_light(frame):
     """CLAHE on L channel — giúp detect người trong video đêm tối."""
     lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
-    merged = cv2.merge([clahe.apply(l), a, b])
+    # Reuse global CLAHE (tránh recreate mỗi frame trên Jetson)
+    merged = cv2.merge([_clahe.apply(l), a, b])
     return cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
 
 
@@ -370,8 +429,12 @@ class VideoProcessor:
         cap = cv2.VideoCapture(path)
         if not cap.isOpened():
             return None
+        try:
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        except Exception:
+            pass
         # Warm up decoder and skip stale buffered frames after a switch.
-        for _ in range(5):
+        for _ in range(3 if IS_JETSON else 5):
             cap.grab()
         cap.read()
         return cap
@@ -431,7 +494,7 @@ class VideoProcessor:
             if frame is None:
                 time.sleep(0.03)
                 continue
-            ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
             if not ok:
                 continue
             with self._jpeg_cond:
@@ -573,30 +636,39 @@ class VideoProcessor:
 
         # ── YOLO detection + tracking ──────────────────────────────
         climb_only = self.demo_focus == "climbing"
-        infer_frame = _enhance_low_light(frame) if climb_only else frame
+        # Jetson: CLAHE mỗi 2 frame để giảm CPU
+        if climb_only:
+            if IS_JETSON and self.frame_count % 2 == 1 and hasattr(self, "_last_infer_frame"):
+                infer_frame = self._last_infer_frame
+            else:
+                infer_frame = _enhance_low_light(frame)
+                self._last_infer_frame = infer_frame
+        else:
+            infer_frame = frame
         det_conf = 0.18 if climb_only else 0.35
         pose_conf = 0.12 if climb_only else 0.3
-        # Lưới 4-cam: giữ imgsz=640 để GPU chịu được 4 pipeline song song
-        imgsz = 640
+        imgsz = IMGSZ
 
         persist_tracks = not self._track_reset
         det_results = self.detect_model.track(
             infer_frame, persist=persist_tracks, classes=[0],
-            conf=det_conf, iou=0.5, imgsz=imgsz, verbose=False,
+            conf=det_conf, iou=0.5, **_yolo_kwargs(imgsz=imgsz),
         )
         if self._track_reset:
             self._track_reset = False
 
         # Pose: mỗi 2 frame leo rào / mỗi 3 frame chu vi (tiết kiệm GPU khi multi-cam)
+        # Jetson: thưa hơn nữa
         pose_kps = {}
         pose_boxes = np.empty((0, 4))
         pose_confs = np.empty(0)
-        run_pose = (climb_only and self.frame_count % 2 == 0) or (
-            not climb_only and self.frame_count % 3 == 0
-        )
+        pose_every = 3 if (IS_JETSON and climb_only) else (2 if climb_only else 3)
+        if IS_JETSON and not climb_only:
+            pose_every = 4
+        run_pose = self.frame_count % pose_every == 0
         if run_pose:
             pose_results = self.pose_model(
-                infer_frame, conf=pose_conf, imgsz=imgsz, verbose=False,
+                infer_frame, conf=pose_conf, **_yolo_kwargs(imgsz=imgsz),
             )
             if pose_results and pose_results[0].boxes is not None:
                 pose_boxes = pose_results[0].boxes.xyxy.cpu().numpy()
@@ -626,7 +698,8 @@ class VideoProcessor:
         if climb_only:
             if len(boxes) == 0:
                 sup = self.detect_model(
-                    infer_frame, classes=[0], conf=0.12, imgsz=imgsz, verbose=False,
+                    infer_frame, classes=[0], conf=0.12,
+                    **_yolo_kwargs(imgsz=imgsz),
                 )[0]
                 if sup.boxes is not None and len(sup.boxes) > 0:
                     boxes = sup.boxes.xyxy.cpu().numpy()

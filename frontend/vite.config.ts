@@ -4,11 +4,13 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: true,
     port: 5173,
+    strictPort: true,
     proxy: {
-      '/api': 'http://localhost:8000',
-      '/snapshots': 'http://localhost:8000',
-      '/video_feed': 'http://localhost:8000',
+      '/api': 'http://127.0.0.1:8000',
+      '/snapshots': 'http://127.0.0.1:8000',
+      '/video_feed': 'http://127.0.0.1:8000',
     }
   }
 })
